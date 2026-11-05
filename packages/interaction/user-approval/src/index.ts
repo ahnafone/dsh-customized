@@ -47,13 +47,22 @@ declare module '@deepseek-ai/dsh-session/types' {
 }
 
 import { ApprovalRequestId } from './types.ts'
-import type { ApprovalOutcome, ApprovalRequestEvent } from './types.ts'
+import type { ApprovalGrantScope, ApprovalOutcome, ApprovalRequestEvent } from './types.ts'
 
 export { ApprovalRequestId } from './types.ts'
-export type { ApprovalOutcome } from './types.ts'
+export type { ApprovalGrantScope, ApprovalOutcome } from './types.ts'
 
 /** Every {@link ApprovalOutcome}, for runtime normalization of answerer returns. */
-const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'allowed-day', 'rejected', 'cancelled', 'unavailable']
+
+/**
+ * The scope each scoped outcome grants. A scoped outcome is accepted only when
+ * the ask advertised that scope, so a channel cannot manufacture a longer grant
+ * for a one-shot request.
+ */
+const GRANT_SCOPE_OF: Readonly<Partial<Record<ApprovalOutcome, ApprovalGrantScope>>> = {
+  'allowed-day': 'day',
+}
 
 /**
  * A session's approval policy — what happens to an {@link ApprovalService}
@@ -235,7 +244,8 @@ export class ApprovalService extends Service {
    * authoritative append cannot reject the request or suppress its matching
    * audit event.
    * @param req - the pending decision (agent, tool identity, reason, signal).
-   * @returns the closed outcome; `'allowed-once'` is the only grant.
+   * @returns the closed outcome; a granted outcome authorizes the asked action
+   *   under the scope the ask offered (`'allowed-once'`, or a scoped grant).
    * @throws when no turn is open or either audit event fails before the session
    *   append commit point.
    */
@@ -310,8 +320,9 @@ export class ApprovalService extends Service {
       ),
     ).then(
       // Normalize a rogue (non-vocabulary) answerer return to the fail-closed
-      // outcome instead of leaking it into callers' closed-union switches.
-      outcome => OUTCOMES.includes(outcome) ? outcome : 'unavailable',
+      // outcome instead of leaking it into callers' closed-union switches. A
+      // scoped grant the ask did not offer is equally unanswerable.
+      outcome => this.accepts(outcome, req) ? outcome : 'unavailable',
       // A throwing answerer must fail the QUESTION closed, not the caller's
       // tool call open — the seam contains its callbacks.
       () => 'unavailable',
@@ -330,6 +341,18 @@ export class ApprovalService extends Service {
         resolve(outcome)
       })
     })
+  }
+
+  /**
+   * Decide whether an answerer return is a legal outcome for this ask.
+   * @param outcome - the answerer's return value, validated against the closed vocabulary.
+   * @param req - the ask whose advertised grant scopes bound the accepted outcomes.
+   * @returns whether the outcome may be recorded and returned to the caller.
+   */
+  private accepts(outcome: ApprovalOutcome, req: ApprovalRequest): boolean {
+    if (!OUTCOMES.includes(outcome)) return false
+    const scope = GRANT_SCOPE_OF[outcome]
+    return scope === undefined || req.grants?.includes(scope) === true
   }
 }
 

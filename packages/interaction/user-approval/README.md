@@ -162,7 +162,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 These limits define when the seam is a poor fit or needs special composition care. They are current package constraints, not a general permission comparison.
 
 - **Requests are valid only inside an open turn** — an idle or between-turn caller throws before auditing; a durable out-of-turn approval workflow is deferred.
-- **Only one-shot grants exist** — the outcome vocabulary has `allowed-once` but no `allow-always`, remembered rule, revocation, or grant store; session policy is only `ask` / `never`.
+- **One-shot and day grants exist** — the outcome vocabulary has `allowed-once` and `allowed-day`; the seam transports the scoped decision and audits it, while the asking consumer owns persistence. There is no `allow-always` profile-wide store; session policy is only `ask` / `never`.
 - **The request carries no tool arguments** — an answerer sees the tool name, reason, and optional call id; the ACP machine channel requires a call id and delegates requests without one.
 - **No built-in answerer** — headless or incompletely composed deployments resolve `unavailable` and fail closed; the service itself never prompts a human.
 - **Pending approvals are process-local** — checkpoints restore policy and turn state, not pending answerer promises or one-shot grants. Recovery does not resubmit questions or repeat runtime effects.

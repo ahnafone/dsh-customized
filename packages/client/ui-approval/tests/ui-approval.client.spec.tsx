@@ -334,6 +334,7 @@ function panelProps(
     escalation: `Tool ${pending.toolName} asks`,
     reject: 'Reject',
     allowOnce: 'Allow once',
+    allowDay: 'Allow for 1 day',
     allowAlways: 'Always allow',
   }
   return {
@@ -361,6 +362,18 @@ describe('ApprovalPanel', () => {
     await expect(pending.result).resolves.toBe('rejected')
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Reject' }).disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Allow once' }).disabled).toBe(true)
+  })
+
+  it('offers the day grant only when the request advertised it', async () => {
+    const without = new PendingApproval(id('s1'), { toolName: 'bash' })
+    const first = render(<ApprovalPanel {...panelProps(without)} />)
+    expect(screen.queryByRole('button', { name: 'Allow for 1 day' })).toBeNull()
+    first.unmount()
+
+    const pending = new PendingApproval(id('s2'), { toolName: 'bash', grants: ['day'] })
+    render(<ApprovalPanel {...panelProps(pending)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Allow for 1 day' }))
+    await expect(pending.result).resolves.toBe('allowed-day')
   })
 
   it('renders correlated detail and returns allow-once', async () => {
@@ -519,12 +532,12 @@ describe('package entries', () => {
 })
 
 it.each(['allow', 'reject', 'always', 'keyboard'] as const)('settles a fixed application decision through %s without free text', async (choice) => {
-  const onAllow = vi.fn(async () => {}), onReject = vi.fn(async () => {}), onAlways = vi.fn(async () => {})
-  const actions = { allow: onAllow, reject: onReject, always: onAlways }
+  const onAllow = vi.fn(async () => {}), onReject = vi.fn(async () => {}), onGrant = vi.fn(async () => {})
+  const actions = { allow: onAllow, reject: onReject, always: onGrant }
   render(<ApprovalCard {...{
     requestKey: 'app-approval', title: 'Control this app?', description: 'Only for this task.',
     subject: { name: 'Calculator', ...choice === 'keyboard' ? {} : { icon: 'data:image/png;base64,aWNvbg==' } }, allowLabel: 'Allow for this task',
-    canAnswer: () => true, onAllow, onReject, onAlways, renderSlot: vi.fn(() => null),
+    canAnswer: () => true, onAllow, onReject, onGrant, grantLabel: 'Always allow', renderSlot: vi.fn(() => null),
     t: (key: string) => ({ reject: 'Reject', allowAlways: 'Always allow' })[key] ?? key,
   } as FactoryComponentPropsOf<'conversation.approval.card'>} />)
   expect(screen.getByText('Calculator')).toBeTruthy()

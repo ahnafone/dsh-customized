@@ -44,7 +44,7 @@ it.each(['allow', 'reject', 'always'] as const)('returns the exact %s option fro
   expect(card).toMatchObject({ title: '允许吗？', description: '本次任务', allowLabel: '本次任务允许', subject: { name: 'Calculator' } })
   expect(card.canAnswer()).toBe(true)
   expect(card.warning).toEqual({ label: zh.approvalRisks, title: zh.approvalRiskTitle, detail: zh.approvalRiskNotice })
-  await ({ allow: card.onAllow, reject: card.onReject, always: card.onAlways! })[choice]()
+  await ({ allow: card.onAllow, reject: card.onReject, always: card.onGrant! })[choice]()
   expect(await request.result).toEqual({ answers: [{ id: 'cua-app-access', selected: [{ allow: 'task-value', reject: 'deny-value', always: 'saved-value' }[choice]] }] })
   pending.close()
   expect(card.canAnswer()).toBe(false)
@@ -59,7 +59,7 @@ it('keeps unsupported persistence absent and uses caller text when no localized 
     t: makeTranslate(en), resolveText: text => text.en } as ApplicationApprovalProps
   const view = render(<ApplicationApproval {...props} />)
   expect(factory.mock.calls[0]?.[1]).toMatchObject({ title: 'Allow?', allowLabel: 'Task' })
-  expect(factory.mock.calls[0]?.[1]).not.toHaveProperty('onAlways')
+  expect(factory.mock.calls[0]?.[1]).not.toHaveProperty('onGrant')
   expect(factory.mock.calls[0]?.[1]).not.toHaveProperty('subject')
   expect(factory.mock.calls[0]?.[1]).not.toHaveProperty('description')
   expect(factory.mock.calls[0]?.[1].canAnswer()).toBe(false)

@@ -68,12 +68,20 @@ export interface ApprovalPresentationRequest {
   readonly reason?: string
   /** Localized presentation copy; the audit reason remains unchanged. */
   readonly displayReason?: { readonly en: string; readonly [locale: string]: string }
+  /** Longer grant scopes this ask can honor; absent means one-shot only. */
+  readonly grants?: readonly ApprovalGrantScope[]
   /** Cancellation projected from the Host waterfall. */
   readonly signal?: AbortSignal
 }
 
+/**
+ * A longer grant scope the asker advertised. `day` lapses 24 hours after the
+ * decision; the Host owns persistence and the client only returns the choice.
+ */
+export type ApprovalGrantScope = 'day'
+
 /** Decisions this interactive Client presentation can return. */
-export type ApprovalDecision = 'allowed-once' | 'rejected'
+export type ApprovalDecision = 'allowed-once' | 'allowed-day' | 'rejected'
 
 let nextApprovalKey = 0
 
@@ -94,6 +102,8 @@ export class PendingApproval {
   readonly reason: string | undefined
   /** Localized presentation copy, when supplied by the asker. */
   readonly displayReason: ApprovalPresentationRequest['displayReason']
+  /** Longer grant scopes the asker advertised; absent means one-shot only. */
+  readonly grants: ApprovalPresentationRequest['grants']
   /** Result returned by the Remote Event listener to the Host waterfall. */
   readonly result: Promise<ApprovalDecision>
 
@@ -116,6 +126,7 @@ export class PendingApproval {
     this.callId = request.callId
     this.reason = request.reason
     this.displayReason = request.displayReason
+    this.grants = request.grants
     const completion = Promise.withResolvers<ApprovalDecision>()
     this.result = completion.promise
     this.#resolve = completion.resolve
@@ -225,6 +236,8 @@ export interface ApprovalCardInput {
   onAllow: () => Promise<void>
   /** Refuse this request. */
   onReject: () => Promise<void>
-  /** Explicit persistent choice; absent when the caller cannot save permission. */
-  onAlways?: () => Promise<void>
+  /** Caller-defined longer grant; absent when the asker offers one-shot only. */
+  onGrant?: () => Promise<void>
+  /** Caller-specific label for the grant action; defaults to Always allow. */
+  grantLabel?: string
 }

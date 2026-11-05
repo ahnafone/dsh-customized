@@ -9,6 +9,7 @@ import type { ApprovalComposerProps } from './contract/slots.ts'
 export function ApprovalPanel(props: ApprovalComposerProps) {
   const approval = props.matched
   const reason = approval.displayReason === undefined ? approval.reason : props.resolveReason(approval.displayReason)
+  const dayGrant = approval.grants?.includes('day') === true
   return props.renderFactorySlot('conversation.approval.card', {
     requestKey: approval.key,
     title: reason ?? props.t('escalation', { toolName: approval.toolName }),
@@ -16,5 +17,6 @@ export function ApprovalPanel(props: ApprovalComposerProps) {
     canAnswer: () => approval.answerable,
     onAllow: () => approval.answer('allowed-once'),
     onReject: () => approval.answer('rejected'),
+    ...(dayGrant ? { onGrant: () => approval.answer('allowed-day'), grantLabel: props.t('allowDay') } : {}),
   })
 }

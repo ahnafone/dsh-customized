@@ -87,6 +87,24 @@ describe('ApprovalService.request', () => {
     expect(Object.keys(appended[0]?.data ?? {}).sort()).toEqual(['id', 'toolName'])
   })
 
+  it('accepts a scoped day grant only when the ask offered it', async () => {
+    const ctx = await mounted()
+    const { agent, appended } = fakeAgent(ctx)
+    ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-day'))
+
+    await expect(ctx.approval.request(requestOf(agent, { grants: ['day'] }))).resolves.toBe('allowed-day')
+    expect(appended.map(event => event.data['outcome'])).toEqual([undefined, 'allowed-day'])
+  })
+
+  it('normalizes an unoffered scoped grant to unavailable and audits it', async () => {
+    const ctx = await mounted()
+    const { agent, appended } = fakeAgent(ctx)
+    ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-day'))
+
+    await expect(ctx.approval.request(requestOf(agent))).resolves.toBe('unavailable')
+    expect(appended[1]?.data).toMatchObject({ outcome: 'unavailable' })
+  })
+
   it('borrows the exact readonly request for scoped dispatch and audit', async () => {
     const ctx = await mounted()
     const { agent, appended } = fakeAgent(ctx)

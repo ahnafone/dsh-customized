@@ -26,10 +26,18 @@ export function ApprovalRequestId(id: string): ApprovalRequestId {
 }
 
 /**
- * Closed approval outcomes: a one-shot grant, explicit rejection, withdrawn
- * request, or unavailable answerer. Callers fail closed on `unavailable`.
+ * A longer grant scope an asker can offer. `day` lapses 24 hours after the
+ * decision; the scope vocabulary is closed, and a scope only exists when an
+ * asker advertises it on its request.
  */
-export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+export type ApprovalGrantScope = 'day'
+
+/**
+ * Closed approval outcomes: a one-shot grant, a scoped grant, explicit
+ * rejection, withdrawn request, or unavailable answerer. Callers fail closed on
+ * `unavailable`.
+ */
+export type ApprovalOutcome = 'allowed-once' | 'allowed-day' | 'rejected' | 'cancelled' | 'unavailable'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -71,6 +79,11 @@ export interface ApprovalRequestEvent {
   readonly reason?: string
   /** Localized presentation only; never persisted in approval audit events. */
   readonly displayReason?: { readonly en: string; readonly [locale: string]: string }
+  /**
+   * Longer grant scopes this ask can honor; absent means one-shot only. The
+   * service normalizes a scoped outcome the ask did not offer to `unavailable`.
+   */
+  readonly grants?: readonly ApprovalGrantScope[]
   /** Cancellation lifetime of the pending request. */
   readonly signal?: AbortSignal
 }

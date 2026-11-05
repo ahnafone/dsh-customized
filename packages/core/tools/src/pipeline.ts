@@ -425,9 +425,9 @@ export class ToolExecutionPipeline {
    * to deny, and an unmount mid-session degrades the same way on the next ask.
    * An agent-less execution also degrades: without an agent there is no
    * session to audit to and no UI to route to. Otherwise the outcome maps
-   * one-to-one — `allowed-once` proceeds; the three non-grants deny with
-   * distinct reasons so the model can tell a human "no" from an absent
-   * approval channel.
+   * one-to-one — a granted outcome (`allowed-once`, or a scoped grant the ask
+   * offered) proceeds; the non-grants deny with distinct reasons so the model
+   * can tell a human "no" from an absent approval channel.
    */
   private async serviceAsk(
     exec: ToolExecution,
@@ -455,7 +455,11 @@ export class ToolExecutionPipeline {
       signal: exec.signal,
     })
     switch (outcome) {
-      case 'allowed-once': return { decision: { kind: 'allow' }, approvalCancelled: false }
+      // The approval service only returns a scoped grant when the asker
+      // advertised that scope; this ask never does, so the branch exists for
+      // the closed union rather than for reachable behavior.
+      case 'allowed-once':
+      case 'allowed-day': return { decision: { kind: 'allow' }, approvalCancelled: false }
       case 'rejected': return {
         decision: { kind: 'deny', reason: `the user rejected tool "${exec.name}"` },
         approvalCancelled: false,

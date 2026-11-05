@@ -1527,6 +1527,7 @@ function eventApproval(status: string | null, t: StatsTranslate): string {
   switch (status) {
     case 'asked': return t('event.approval.asked')
     case 'allowed-once': return t('event.approval.allowed')
+    case 'allowed-day': return t('event.approval.allowedDay')
     case 'rejected': return t('event.approval.rejected')
     case 'cancelled': return t('event.approval.cancelled')
     case 'unavailable': return t('event.approval.unavailable')

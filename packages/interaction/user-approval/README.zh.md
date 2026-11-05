@@ -162,7 +162,7 @@ The user changed the approval policy from "ask the user for approval" to "never 
 这些限制说明该 seam 不适用的场景，以及组合时需要特别注意的场景。它们是当前包约束，不是通用权限对比。
 
 - **请求只在尚未结束的轮次内有效**：在空闲时或轮次之间发起调用，会在审计前抛出异常；持久化的轮次外审批工作流仍属延期工作。
-- **仅存在一次性授权**：结果词汇包含 `allowed-once`，但不含 `allow-always`、已记住的规则、撤销或授权存储；会话策略只有 `ask`／`never`。
+- **存在一次性授权和日授权**：结果词汇包含 `allowed-once` 与 `allowed-day`；该 seam 只传递并审计作用域决定，持久化由发起请求的消费方负责。不存在 `allow-always` 的 profile 级存储；会话策略只有 `ask`／`never`。
 - **请求不携带工具参数**：应答者会看到工具名称、原因和可选调用 id；ACP（Agent Client Protocol）机器通道要求调用 id，并会委托不含 id 的请求。
 - **没有内置应答者**：无头或组合不完整的部署会返回 `unavailable` 并以拒绝方式关闭；服务自身绝不会提示人类。
 - **待处理审批仅在进程内有效**：检查点恢复策略和轮次状态，不恢复待处理应答的 Promise 或一次性授权。恢复不会重新提交问题或重复运行时副作用。

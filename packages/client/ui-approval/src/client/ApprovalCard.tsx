@@ -16,7 +16,7 @@ export function ApprovalCard(props: FactoryComponentPropsOf<'conversation.approv
 }
 
 function ApprovalFlow(props: FactoryComponentPropsOf<'conversation.approval.card'>) {
-  const { requestKey, title, description, subject, warning, allowLabel, canAnswer, onAllow, onReject, onAlways, t } = props
+  const { requestKey, title, description, subject, warning, allowLabel, canAnswer, onAllow, onReject, onGrant, grantLabel, t } = props
   const detail = props.callId === undefined ? null : props.renderSlot('conversation.approval.detail', { callId: props.callId })
   const [answered, setAnswered] = useState(false)
   const waiting = useRef(false)
@@ -80,11 +80,11 @@ function ApprovalFlow(props: FactoryComponentPropsOf<'conversation.approval.card
           <Button variant="outline" className={css.reject} disabled={answered} onClick={() => { answer(onReject) }}>
             {t('reject')}
           </Button>
-          <Button variant={onAlways === undefined ? 'primary' : 'outline'} disabled={answered} onClick={() => { answer(onAllow) }}>
+          <Button variant={onGrant === undefined ? 'primary' : 'outline'} disabled={answered} onClick={() => { answer(onAllow) }}>
             {allowLabel ?? t('allowOnce')}
           </Button>
-          {onAlways !== undefined && <Button variant="primary" disabled={answered} onClick={() => { answer(onAlways) }}>
-            {t('allowAlways')}
+          {onGrant !== undefined && <Button variant="primary" disabled={answered} onClick={() => { answer(onGrant) }}>
+            {grantLabel ?? t('allowAlways')}
           </Button>}
         </div>
       </div>

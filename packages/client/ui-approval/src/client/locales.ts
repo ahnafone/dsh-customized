@@ -8,6 +8,7 @@ export const zh = {
   reject: '拒绝',
   allow: '允许',
   allowOnce: '允许一次',
+  allowDay: '允许一天',
   allowAlways: '始终允许',
 } satisfies Record<string, string>
 
@@ -22,6 +23,7 @@ export const en = {
   reject: 'Reject',
   allow: 'Allow',
   allowOnce: 'Allow once',
+  allowDay: 'Allow for 1 day',
   allowAlways: 'Always allow',
 } satisfies Record<ApprovalKey, string>
 
@@ -33,6 +35,7 @@ export const ja = {
   'reject': '拒否',
   'allow': '許可',
   'allowOnce': '1 回だけ許可',
+  'allowDay': '1 日許可',
   'allowAlways': '常に許可',
 } satisfies Record<keyof typeof en, string>
 
@@ -44,6 +47,7 @@ export const es = {
   reject: 'Rechazar',
   allow: 'Permitir',
   allowOnce: 'permitir una vez',
+  allowDay: 'Permitir un día',
   allowAlways: 'Permitir siempre',
 } satisfies Record<keyof typeof en, string>
 
@@ -55,6 +59,7 @@ export const fr = {
   reject: 'Rejeter',
   allow: 'Autoriser',
   allowOnce: 'Autoriser une fois',
+  allowDay: 'Autoriser un jour',
   allowAlways: 'Toujours autoriser',
 } satisfies Record<keyof typeof en, string>
 
@@ -66,6 +71,7 @@ export const de = {
   reject: 'Ablehnen',
   allow: 'Erlauben',
   allowOnce: 'Einmal zulassen',
+  allowDay: 'Einen Tag zulassen',
   allowAlways: 'Immer zulassen',
 } satisfies Record<keyof typeof en, string>
 
@@ -77,6 +83,7 @@ export const ru = {
   reject: 'Отклонить',
   allow: 'Разрешить',
   allowOnce: 'Разрешить один раз',
+  allowDay: 'Разрешить на один день',
   allowAlways: 'Всегда разрешать',
 } satisfies Record<keyof typeof en, string>
 
@@ -88,5 +95,6 @@ export const pt = {
   reject: 'Rejeitar',
   allow: 'Permitir',
   allowOnce: 'Permitir uma vez',
+  allowDay: 'Permitir por um dia',
   allowAlways: 'Sempre permitir',
 } satisfies Record<keyof typeof en, string>

@@ -42,6 +42,6 @@ export function ApplicationApproval({ matched: { pending, item, intent }, resolv
     canAnswer: () => pending.snapshot().channel !== 'none' && !pending.snapshot().closed,
     onAllow: () => answer(intent.approve),
     onReject: () => answer(intent.reject),
-    ...(always === undefined ? {} : { onAlways: () => answer(always) }),
+    ...(always === undefined ? {} : { onGrant: () => answer(always), grantLabel: always }),
   })
 }
