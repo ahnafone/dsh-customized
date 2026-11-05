@@ -23,7 +23,7 @@ import { z as zod } from 'zod'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import { SANDBOX_MODES, revokeSandboxGrants, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 // Side-effect type import: declaration-merges `ctx.shell` (the capability fact
 // `sandboxMode` this service reads), without a value dependency on the seam.
 import type {} from '@deepseek-ai/dsh-shell'
@@ -74,6 +74,9 @@ export const CUSTOM_PRESET = 'custom'
 
 /** Canonical identity of the experimental per-call review preset. */
 export const AUTO_PRESET = 'auto'
+
+/** The `/permission` argument that clears temporary sandbox grants without switching presets. */
+export const REVOKE_GRANTS = 'revoke'
 
 /**
  * Fixed execution bundle for the live Auto integration. `ask` routes reviewer
@@ -212,6 +215,9 @@ export class PermissionPresetService extends TypertRemoteService {
     if (AUTO_PRESET in this.presets) {
       throw new Error(`permission: "${AUTO_PRESET}" is reserved and cannot name a configured preset`)
     }
+    if (REVOKE_GRANTS in this.presets) {
+      throw new Error(`permission: "${REVOKE_GRANTS}" is reserved for revoking temporary access and cannot name a configured preset`)
+    }
     if (ctx.shell.sandboxMode === undefined) {
       throw new Error('permission: the mounted bash executor does not confine (no sandboxMode) — presets bundle a sandbox mode, so composing this plugin over an unconfined executor is a misconfiguration')
     }
@@ -255,18 +261,22 @@ export class PermissionPresetService extends TypertRemoteService {
       commandCtx.commands.register({
         definitionId: CommandDefinitionId('@deepseek-ai/dsh-permission-presets'),
         name: 'permission',
-        description: 'Switch the permission preset (sandbox mode + approval policy)',
-        input: { hint: '<preset>' },
+        description: 'Switch the permission preset (sandbox mode + approval policy) or revoke temporary access',
+        input: { hint: '<preset|revoke>' },
         // No settlement text labels its value with this command's own name: a
         // surface that renders `name · text` (the web command row) would
         // otherwise read `permission · Permission preset: workspace-write.`
         handler: ({ agent, rawInput }) => {
           const name = rawInput.trim()
           if (name === '') {
-            return { kind: 'success', text: `current preset ${this.current(agent.session)} (available: ${this.names.join(', ')})` }
+            return { kind: 'success', text: `current preset ${this.current(agent.session)} (available: ${this.names.join(', ')}, ${REVOKE_GRANTS})` }
+          }
+          if (name === REVOKE_GRANTS) {
+            revokeSandboxGrants(agent.session)
+            return { kind: 'success', text: 'Temporary access revoked.' }
           }
           if (!this.names.includes(name)) {
-            return { kind: 'error', text: `unknown preset "${name}" (available: ${this.names.join(', ')})` }
+            return { kind: 'error', text: `unknown preset "${name}" (available: ${this.names.join(', ')}, ${REVOKE_GRANTS})` }
           }
           this.apply(agent.session, name, (policy) => { this.ctx.approval.setPolicy(agent, policy) })
           return { kind: 'success', text: `preset ${name}` }

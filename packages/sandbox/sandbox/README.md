@@ -63,7 +63,7 @@ Enforcement is reported per call: `full` means the backend governs every promise
 
 ### Denied calls and escalation
 
-When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the approval service obtains consent for the operation. The request retains its audit reason and supplies English, Chinese, and Japanese presentation copy from `src/locales.ts`, with the model's justification unchanged. Missing translations follow the locale service's fallback chain, ultimately English; requesters own their translated presentation text. A wider mode requires approval and applies to that one call only. Repeating the call's effective mode succeeds without approval; narrower targets remain invalid.
+When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the approval service obtains consent for the operation. The request retains its audit reason and supplies English, Chinese, and Japanese presentation copy from `src/locales.ts`, with the model's justification unchanged. Missing translations follow the locale service's fallback chain, ultimately English; requesters own their translated presentation text. A wider mode requires approval; `Allow once` applies it to that call only, while an ask that offers the day scope can record a longer session grant instead. Under `workspace-write`, a write or edit that identifies a folder offers that folder as a day grant, so later filesystem and shell writes under it need no approval until the grant lapses or is revoked. Repeating the call's effective mode succeeds without approval; narrower targets remain invalid.
 
 ### Fail-closed behavior
 
@@ -146,7 +146,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-A denied call surfaces the marker `[sandbox: file access denied under <mode> mode]` and, where the composition advertises escalation, the hint `[sandbox: escalation available — retry this exact <subject> once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]`. The retry carries `sandbox_permissions` and a `justification`; the user's `allowed-once` / `rejected` / `cancelled` decision becomes the call's result text.
+A denied call surfaces the marker `[sandbox: file access denied under <mode> mode]` and, where the composition advertises escalation, the hint `[sandbox: escalation available — retry this exact <subject> once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]`. The retry carries `sandbox_permissions` and a `justification`; the user's `allowed-once` / `allowed-day` / `rejected` / `cancelled` decision becomes the call's result text. A day decision records a `sandbox/grant` event; the folder form adds an extra writable root.
 
 #### Token effect
 

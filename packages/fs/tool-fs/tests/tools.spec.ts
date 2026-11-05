@@ -846,8 +846,16 @@ describe('sandbox escalation API (write/edit)', () => {
   /** A confining fake `ctx.fs`: reports a default mode, records each per-call policy, and can arm a sandbox denial. */
   class SandboxingFakeFs extends FakeFs {
     stamped: (SandboxExecutionPolicy | undefined)[] = []
+    directories = new Set<string>()
     override get sandboxMode(): SandboxMode {
       return 'workspace-write'
+    }
+    override async resolve(path: string): Promise<FsTarget> {
+      return path.startsWith('/') ? { targetKey: FsTargetKey(path), displayPath: path } : super.resolve(path)
+    }
+    override async stat(target: FsTarget): Promise<FsInfo | undefined> {
+      if (this.directories.has(String(target.targetKey))) return { version: FsVersion('dir'), type: 'directory' }
+      return super.stat(target)
     }
     override async writeText(
       target: FsTarget,
@@ -927,6 +935,7 @@ describe('sandbox escalation API (write/edit)', () => {
           events.push(event)
           return event
         },
+        events,
       },
     }
   }
@@ -1039,6 +1048,71 @@ describe('sandbox escalation API (write/edit)', () => {
       workspaceRoot: '/session-project',
       sessionId: SessionId('sess-fs-esc'),
     }])
+  })
+
+  it('a denied write outside the workspace offers and stamps a folder grant for one call', async () => {
+    const { ctx, fs } = await setupConfining({ approval: true })
+    fs.directories.add('/abs/other')
+    const requests: Array<{ reason?: string; grants?: readonly string[] }> = []
+    ctx.on('approval/request', (request) => {
+      requests.push(request)
+      return Promise.resolve('allowed-once' as const)
+    })
+    await executeToolFixture(ctx, {
+      callId: ToolCallId('call-fs-folder-once'),
+      name: 'write',
+      arguments: { file_path: 'other/a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'edit the sibling project' },
+      agent: escalationAgent() as never,
+      signal: new AbortController().signal,
+    })
+    expect(requests[0]?.reason).toBe('escalate sandbox for /abs/other (requested danger-full-access): edit the sibling project')
+    expect(requests[0]?.grants).toEqual(['day'])
+    expect(fs.stamped).toEqual([{
+      mode: 'workspace-write',
+      workspaceRoot: '/session-project',
+      additionalWritableRoots: ['/abs/other'],
+      sessionId: SessionId('sess-fs-esc'),
+    }])
+  })
+
+  it('a folder day grant stamps the folder for the call and records the grant event', async () => {
+    const { ctx, fs } = await setupConfining({ approval: true })
+    fs.directories.add('/abs/other')
+    ctx.on('approval/request', () => Promise.resolve('allowed-day' as const))
+    const agent = escalationAgent() as { session: { events: Array<{ type: string; data: Record<string, unknown> }> } }
+    await executeToolFixture(ctx, {
+      callId: ToolCallId('call-fs-folder-day'),
+      name: 'write',
+      arguments: { file_path: 'other/a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'edit the sibling project' },
+      agent: agent as never,
+      signal: new AbortController().signal,
+    })
+    expect(fs.stamped).toEqual([{
+      mode: 'workspace-write',
+      workspaceRoot: '/session-project',
+      additionalWritableRoots: ['/abs/other'],
+      sessionId: SessionId('sess-fs-esc'),
+    }])
+    expect(agent.session.events.find(event => event.type === 'sandbox/grant')?.data)
+      .toMatchObject({ scope: 'day', root: '/abs/other' })
+  })
+
+  it('falls back to a mode grant when no folder can be established', async () => {
+    const { ctx, fs } = await setupConfining({ approval: true })
+    const requests: Array<{ reason?: string }> = []
+    ctx.on('approval/request', (request) => {
+      requests.push(request)
+      return Promise.resolve('allowed-once' as const)
+    })
+    await executeToolFixture(ctx, {
+      callId: ToolCallId('call-fs-no-folder'),
+      name: 'write',
+      arguments: { file_path: 'a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'write the file' },
+      agent: escalationAgent() as never,
+      signal: new AbortController().signal,
+    })
+    expect(requests[0]?.reason).toBe('escalate sandbox to danger-full-access: write the file')
+    expect(fs.stamped[0]?.mode).toBe('danger-full-access')
   })
 
   it.each(['workspace-write', 'danger-full-access'] as const)('writes under repeated %s without approval', async (mode) => {

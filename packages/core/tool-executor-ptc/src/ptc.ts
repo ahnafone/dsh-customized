@@ -14,6 +14,7 @@ import { createUserMessage, HarnessError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, ToolCallId, ToolSchema } from '@deepseek-ai/dsh-llm'
 import type { PtcBindingFunction, PtcRunResult, PtcRunSandbox, PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import { approveEscalation, ESCALATION_TARGETS, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { grantSandboxAccess } from '@deepseek-ai/dsh-sandbox-policy'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
@@ -358,7 +359,8 @@ export function createRunCodeTool(
         let policy = standingPolicy
         if (args.sandbox_permissions !== undefined && args.justification !== undefined) {
           if (standingPolicy === undefined) throw new Error('sandbox_permissions is not available for this PTC runtime')
-          const approvedMode = await approveEscalation({
+          const session = exec.agent?.session
+          const decision = await approveEscalation({
             requestedMode: args.sandbox_permissions,
             justification: args.justification,
             effectiveMode: standingPolicy.mode,
@@ -366,8 +368,9 @@ export function createRunCodeTool(
           }, {
             approver: ctx.get('approval'), agent: exec.agent, callId: exec.callId,
             toolName: RUN_CODE_NAME, signal: callSignal,
+            ...session === undefined ? {} : { grant: (grant) => { grantSandboxAccess(session, grant) } },
           })
-          policy = { ...standingPolicy, mode: approvedMode }
+          policy = { ...standingPolicy, mode: decision.mode }
         }
         const cwd = await resolveWorkingDirectory(ctx, { ...exec, signal: callSignal })
         callSignal.throwIfAborted()

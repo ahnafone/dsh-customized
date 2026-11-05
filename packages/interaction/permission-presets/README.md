@@ -53,7 +53,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Switching presets
 
-Switching to Auto first runs its synchronous admission check; every preset switch then changes only the knobs whose effective value differs, and selecting the preset already in effect changes nothing. The current value resolves as the still-matching last recorded selection, including a recorded Auto selection under the `never` approval policy, else the first matching configured entry, else `custom`. Users switch through the `/permission` command: a bare invocation reports the current preset and every available entry, and a preset argument switches to it.
+Switching to Auto first runs its synchronous admission check; every preset switch then changes only the knobs whose effective value differs, and selecting the preset already in effect changes nothing. The current value resolves as the still-matching last recorded selection, including a recorded Auto selection under the `never` approval policy, else the first matching configured entry, else `custom`. Users switch through the `/permission` command: a bare invocation reports the current preset and every available entry, a preset argument switches to it, and the reserved `revoke` argument clears temporary sandbox grants without changing the mode.
 
 ### What users see
 

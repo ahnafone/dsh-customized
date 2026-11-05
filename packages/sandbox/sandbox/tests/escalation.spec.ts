@@ -6,7 +6,7 @@
  * verbatim texts are pinned once, next to the vocabulary that owns them.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ESCALATION_TARGETS,
   WIDER_MODES,
@@ -81,10 +81,11 @@ describe('approveEscalation', () => {
   })
 
   it('grants: returns the requested mode, asking through the approver with the audit reason', async () => {
-    const seen: { reason?: string }[] = []
-    const granted = await approveEscalation(req(), ingredients({ approver: approver('allowed-once', r => seen.push(r as { reason?: string })) }))
-    expect(granted).toBe('workspace-write')
+    const seen: { reason?: string; grants?: readonly string[] }[] = []
+    const granted = await approveEscalation(req(), ingredients({ approver: approver('allowed-once', r => seen.push(r as { reason?: string; grants?: readonly string[] })) }))
+    expect(granted).toEqual({ mode: 'workspace-write' })
     expect(seen[0]?.reason).toBe('escalate sandbox to workspace-write: the user asked to write in the workspace')
+    expect(seen[0]?.grants).toBeUndefined()
     expect(seen[0]).toMatchObject({
       displayReason: {
         en: 'Allow this operation with workspace-write permissions: the user asked to write in the workspace',
@@ -98,10 +99,10 @@ describe('approveEscalation', () => {
     const seen: unknown[] = []
     const request = req({ requestedMode: mode, effectiveMode: mode })
     await expect(approveEscalation(request, ingredients({ approver: approver('rejected', r => seen.push(r)) })))
-      .resolves.toBe(mode)
+      .resolves.toEqual({ mode })
     expect(seen).toEqual([])
     await expect(approveEscalation(request, ingredients({ approver: undefined, agent: undefined })))
-      .resolves.toBe(mode)
+      .resolves.toEqual({ mode })
   })
 
   it('a narrower or unsupported target fails closed without asking', async () => {
@@ -127,7 +128,76 @@ describe('approveEscalation', () => {
     await expect(approveEscalation(req(), ingredients({ approver: approver('cancelled') })))
       .rejects.toThrow('approval for escalating to "workspace-write" was cancelled')
     await expect(approveEscalation(req(), ingredients({ approver: approver('unavailable') })))
-      .rejects.toThrow('no approval channel is available')
+      .rejects.toThrow(/no approval channel is available/)
+  })
+
+  it('offers the day scope only when a grant sink can persist it', async () => {
+    const seen: { grants?: readonly string[] }[] = []
+    const grant = vi.fn()
+    await approveEscalation(
+      req({ requestedMode: 'danger-full-access', effectiveMode: 'workspace-write' }),
+      ingredients({
+        approver: approver('allowed-once', r => seen.push(r as { grants?: readonly string[] })),
+        grant,
+      }),
+    )
+    expect(seen[0]?.grants).toEqual(['day'])
+    expect(grant).not.toHaveBeenCalled()
+  })
+
+  it('a day mode grant widens the session and is handed to the sink', async () => {
+    const grant = vi.fn()
+    const decision = await approveEscalation(
+      req({ requestedMode: 'danger-full-access', effectiveMode: 'workspace-write' }),
+      ingredients({ approver: approver('allowed-day'), grant }),
+    )
+    expect(decision).toEqual({
+      mode: 'danger-full-access',
+      grant: { scope: 'day', mode: 'danger-full-access' },
+    })
+    expect(grant).toHaveBeenCalledWith({ scope: 'day', mode: 'danger-full-access' })
+  })
+
+  it('a folder ask grants only that folder for one call and names it in the audit text', async () => {
+    const seen: { reason?: string; displayReason?: Record<string, string>; grants?: readonly string[] }[] = []
+    const grantRoot = { path: '/projects/other', display: '/projects/other' }
+    const decision = await approveEscalation(
+      req({ requestedMode: 'danger-full-access', effectiveMode: 'workspace-write', grantRoot }),
+      ingredients({ approver: approver('allowed-once', r => seen.push(r as { reason?: string; displayReason?: Record<string, string>; grants?: readonly string[] })) }),
+    )
+    expect(decision).toEqual({ mode: 'workspace-write', root: '/projects/other' })
+    expect(seen[0]?.reason).toBe('escalate sandbox for /projects/other (requested danger-full-access): the user asked to write in the workspace')
+    expect(seen[0]?.displayReason?.en).toBe('Allow this operation under /projects/other for one day: the user asked to write in the workspace')
+    expect(seen[0]?.grants).toBeUndefined()
+  })
+
+  it('a folder day grant records the folder and covers this call too', async () => {
+    const grant = vi.fn()
+    const grantRoot = { path: '/projects/other', display: '/projects/other' }
+    const decision = await approveEscalation(
+      req({ requestedMode: 'danger-full-access', effectiveMode: 'workspace-write', grantRoot }),
+      ingredients({ approver: approver('allowed-day'), grant }),
+    )
+    expect(decision).toEqual({
+      mode: 'workspace-write',
+      root: '/projects/other',
+      grant: { scope: 'day', root: '/projects/other' },
+    })
+    expect(grant).toHaveBeenCalledWith({ scope: 'day', root: '/projects/other' })
+  })
+
+  it('a scoped outcome without a persistence sink fails closed', async () => {
+    await expect(approveEscalation(req(), ingredients({ approver: approver('allowed-day') })))
+      .rejects.toThrow(/no approval channel can persist a longer grant/)
+  })
+
+  it('folder rejections and cancellations name the folder', async () => {
+    const grantRoot = { path: '/projects/other', display: '/projects/other' }
+    const request = req({ requestedMode: 'danger-full-access', effectiveMode: 'workspace-write', grantRoot, subject: 'operation' })
+    await expect(approveEscalation(request, ingredients({ approver: approver('rejected') })))
+      .rejects.toThrow('the user rejected allowing this operation under "/projects/other"; it stays denied, so stop and explain instead of working around it')
+    await expect(approveEscalation(request, ingredients({ approver: approver('cancelled') })))
+      .rejects.toThrow('approval for allowing "/projects/other" was cancelled')
   })
 
   it('an outcome outside the closed union trips the exhaustiveness guard (defensive)', async () => {

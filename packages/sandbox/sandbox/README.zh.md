@@ -63,7 +63,7 @@ kind: "package-reference"
 
 ### 被拒绝的调用与升权
 
-受限调用被拒绝时，操作会报告指明模式的拒绝标记——`[sandbox: file access denied under <mode> mode]`——组合声明升权能力时还会给出升权提示。模型可以用 `sandbox_permissions`（足以放行的最窄更宽模式）加 `justification` 重试一次完全相同的调用；审批服务为操作取得同意。请求保留审计原因，同时从 `src/locales.ts` 提供英文、中文和日文展示文案，模型给出的理由保持原样。缺失的译文遵循语言服务的回退链，最终回退到英文；请求方负责自己的展示译文。更宽的模式需要审批，且只作用于该次调用。重复指定调用的生效模式无需审批即可成功；更窄的目标仍然无效。
+受限调用被拒绝时，操作会报告指明模式的拒绝标记——`[sandbox: file access denied under <mode> mode]`——组合声明升权能力时还会给出升权提示。模型可以用 `sandbox_permissions`（足以放行的最窄更宽模式）加 `justification` 重试一次完全相同的调用；审批服务为操作取得同意。请求保留审计原因，同时从 `src/locales.ts` 提供英文、中文和日文展示文案，模型给出的理由保持原样。缺失的译文遵循语言服务的回退链，最终回退到英文；请求方负责自己的展示译文。更宽的模式需要审批；`允许一次` 只作用于该次调用，而声明了日授权作用域的请求可以改为记录更长期的会话授权。在 `workspace-write` 下，能够识别出目录的写入或编辑会提供该目录的日授权，因此之后该目录下的文件写入和 shell 写入都无需审批，直到授权过期或被撤销。重复指定调用的生效模式无需审批即可成功；更窄的目标仍然无效。
 
 ### 故障关闭行为
 
@@ -146,7 +146,7 @@ sandbox mode "<mode>" is requested but no sandbox backend is usable on this host
 
 #### 模型看到什么
 
-被拒绝的调用会呈现标记 `[sandbox: file access denied under <mode> mode]`，组合声明升权能力时还会呈现提示 `[sandbox: escalation available — retry this exact <subject> once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]`。重试携带 `sandbox_permissions` 与 `justification`；用户的 `allowed-once`／`rejected`／`cancelled` 决定成为该调用的结果文本。
+被拒绝的调用会呈现标记 `[sandbox: file access denied under <mode> mode]`，组合声明升权能力时还会呈现提示 `[sandbox: escalation available — retry this exact <subject> once with sandbox_permissions (the narrowest wider mode that suffices) + justification; the approval prompt asks the user]`。重试携带 `sandbox_permissions` 与 `justification`；用户的 `allowed-once`／`allowed-day`／`rejected`／`cancelled` 决定成为该调用的结果文本。日授权决定会记录一条 `sandbox/grant` 事件；目录形式还会增加一个可写根目录。
 
 #### Token 影响
 

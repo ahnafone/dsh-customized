@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
-import SandboxPolicyService, { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import SandboxPolicyService, { DAY_GRANT_MS, SANDBOX_MODES, grantSandboxAccess, revokeSandboxGrants, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt, { renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
@@ -291,5 +291,63 @@ describe('the sandbox/mode session kit', () => {
     const modeEvents = session.snapshotEvents().filter(e => e.type === 'sandbox/mode')
     expect(modeEvents).toHaveLength(1)
     expect(modeEvents[0]?.data).toEqual({ mode: 'danger-full-access' })
+  })
+})
+
+
+describe('temporary sandbox grants', () => {
+  it('records a mode grant with the day expiry and resolves the wider mode', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-grant', '/projects/current')
+    grantSandboxAccess(active, { scope: 'day', mode: 'danger-full-access' })
+    const event = active.snapshotEvents().find(candidate => candidate.type === 'sandbox/grant')
+    expect(event?.data).toMatchObject({ scope: 'day', mode: 'danger-full-access' })
+    expect((event?.data as { expiresAt: number }).expiresAt).toBeGreaterThanOrEqual(Date.now() + DAY_GRANT_MS - 1000)
+    expect(ctx.sandboxPolicy.resolve({ session: active }).mode).toBe('danger-full-access')
+    expect(ctx.sandboxPolicy.overrideOf(active)).toBeUndefined()
+  })
+
+  it('adds a folder grant to the writable roots and keeps configured roots', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback', additionalWritableRoots: ['/configured'] })
+    const active = session('sess-folder', '/projects/current')
+    grantSandboxAccess(active, { scope: 'day', root: '/projects/other' })
+    const policy = ctx.sandboxPolicy.resolve({ session: active })
+    expect(policy.mode).toBe('workspace-write')
+    expect(policy.additionalWritableRoots).toEqual(['/configured', '/projects/other'])
+  })
+
+  it('ignores an expired grant', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-expired', '/projects/current')
+    active.append('sandbox/grant', { scope: 'day', mode: 'danger-full-access', expiresAt: Date.now() - 1 })
+    expect(ctx.sandboxPolicy.resolve({ session: active }).mode).toBe('workspace-write')
+  })
+
+  it('a mode switch clears active grants', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-clear', '/projects/current')
+    grantSandboxAccess(active, { scope: 'day', mode: 'danger-full-access' })
+    expect(ctx.sandboxPolicy.resolve({ session: active }).mode).toBe('danger-full-access')
+    setSandboxMode(active, 'workspace-write')
+    expect(ctx.sandboxPolicy.resolve({ session: active }).mode).toBe('workspace-write')
+  })
+
+  it('revokeSandboxGrants clears grants without changing the standing mode', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-revoke', '/projects/current')
+    grantSandboxAccess(active, { scope: 'day', mode: 'danger-full-access' })
+    revokeSandboxGrants(active)
+    expect(ctx.sandboxPolicy.resolve({ session: active }).mode).toBe('workspace-write')
+    expect(active.snapshotEvents().filter(candidate => candidate.type === 'sandbox/grant-revoke')).toHaveLength(1)
+  })
+
+  it('renders active grants and their expiry in the policy context', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    await ctx.plugin(SystemPrompt)
+    const active = session('sess-context', '/projects/current')
+    grantSandboxAccess(active, { scope: 'day', mode: 'danger-full-access' })
+    const text = await policyContext(ctx, active)
+    expect(text).toContain('Temporary user grants:')
+    expect(text).toContain('"danger-full-access"')
   })
 })

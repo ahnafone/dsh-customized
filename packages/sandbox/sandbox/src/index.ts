@@ -18,7 +18,7 @@ export {
   sandboxPermissionsDescription,
   validateEscalationArgs,
 } from './escalation.ts'
-export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
+export type { EscalationApproval, EscalationApprover, EscalationDecision, EscalationGrant, EscalationGrantScope, EscalationOutcome, EscalationRequest } from './escalation.ts'
 export { canonicalPath, workspaceWritableRoots, writableRoots, SandboxInvalidRootError } from './roots.ts'
 
 /**

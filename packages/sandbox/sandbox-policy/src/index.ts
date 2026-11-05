@@ -31,7 +31,15 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 
-export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
+export {
+  DAY_GRANT_MS,
+  SANDBOX_MODES,
+  grantSandboxAccess,
+  revokeSandboxGrants,
+  setSandboxMode,
+} from './session-mode.ts'
+export type { SandboxAccessGrant, SandboxAccessGrantInput } from './session-mode.ts'
+import type { SandboxAccessGrant } from './session-mode.ts'
 
 /** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
 function resolveWorkspaceRoot(path: string): string {
@@ -56,20 +64,47 @@ function resolveAdditionalWritableRoots(roots: readonly string[] | undefined): r
   return Object.freeze([...new Set(roots)])
 }
 
+/** One active grant as the model reads it: what it widens and when it lapses. */
+function renderGrant(grant: SandboxAccessGrant): string {
+  const until = new Date(grant.expiresAt).toISOString()
+  return grant.mode === undefined
+    ? `directory ${JSON.stringify(grant.root)} until ${until}`
+    : `mode ${JSON.stringify(grant.mode)} until ${until}`
+}
+
+/** Mode widening order; a grant can only ever widen, never narrow. */
+const MODE_RANK: Readonly<Record<SandboxMode, number>> = {
+  'read-only': 0,
+  'workspace-write': 1,
+  'danger-full-access': 2,
+}
+
+/**
+ * Pick the widest of a non-empty mode list.
+ * @param modes - the standing mode and every active granted mode.
+ * @returns the widest mode.
+ */
+function widestMode(modes: readonly SandboxMode[]): SandboxMode {
+  return modes.reduce((widest, mode) => MODE_RANK[mode] > MODE_RANK[widest] ? mode : widest)
+}
+
 /** Render the policy without claiming which capabilities are mounted. */
-function renderPolicyContext(policy: SandboxExecutionPolicy): string {
+function renderPolicyContext(policy: SandboxExecutionPolicy, grants: readonly SandboxAccessGrant[]): string {
+  const temporary = grants.length === 0
+    ? ''
+    : ` Temporary user grants: ${grants.map(renderGrant).join('; ')}.`
   switch (policy.mode) {
     case 'read-only':
-      return 'Current DSH file policy: read-only. Any available operation enforced by the DSH file sandbox cannot modify files in the standing mode. Do not refuse a required modification from this policy alone: try an available tool normally and follow any denial and escalation guidance it returns.'
+      return `Current DSH file policy: read-only. Any available operation enforced by the DSH file sandbox cannot modify files in the standing mode. Do not refuse a required modification from this policy alone: try an available tool normally and follow any denial and escalation guidance it returns.${temporary}`
     case 'workspace-write': {
       const additional = policy.additionalWritableRoots
       const extra = additional === undefined
         ? ''
         : ` Additional writable directories: ${JSON.stringify(additional)}.`
-      return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}.${extra} Some platform temporary areas may also be writable.`
+      return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}.${extra} Some platform temporary areas may also be writable.${temporary}`
     }
     case 'danger-full-access':
-      return 'Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.'
+      return `Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.${temporary}`
     /* v8 ignore next 4 -- SandboxMode is a typed same-process closed union; this branch is only the static exhaustiveness guard. */
     default: {
       const mode: never = policy.mode
@@ -125,6 +160,22 @@ const sandboxModeStateSchema = zod.union([
   zod.literal('danger-full-access'),
 ]).nullable()
 
+/** The active-grant projection's schema; its state is the schema's inferred shape. */
+const sandboxGrantsStateSchema = zod.object({
+  grants: zod.array(zod.object({
+    scope: zod.literal('day'),
+    expiresAt: zod.number().int().nonnegative(),
+    mode: zod.union([
+      zod.literal('read-only'),
+      zod.literal('workspace-write'),
+      zod.literal('danger-full-access'),
+    ]).optional(),
+    root: zod.string().optional(),
+  }).strict()),
+}).strict()
+
+type SandboxGrantsState = zod.infer<typeof sandboxGrantsStateSchema>
+
 /**
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
  * default mode, fallback workspace root, and current request-time policy
@@ -150,6 +201,7 @@ export class SandboxPolicyService extends Service {
   /** The frozen extra writable directories shared by every resolved policy, or `undefined` for none. */
   readonly additionalWritableRoots: readonly string[] | undefined
   private sandboxModeProjectionHandle!: ProjectionHandle<SandboxMode | null>
+  private sandboxGrantsProjectionHandle!: ProjectionHandle<SandboxGrantsState>
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sandboxPolicy')
@@ -170,6 +222,25 @@ export class SandboxPolicyService extends Service {
       init: () => null,
       apply: (state, event) => (event.type === 'sandbox/mode' ? event.data.mode : state),
     })
+    this.sandboxGrantsProjectionHandle = await ctx.sessionProjections.register({
+      key: 'sandboxGrants',
+      stateVersion: 1,
+      stateSchema: sandboxGrantsStateSchema,
+      init: () => ({ grants: [] }),
+      apply: (state, event) => {
+        switch (event.type) {
+          case 'sandbox/grant':
+            return { grants: [...state.grants, event.data] }
+          // A mode switch is the user's explicit standing policy; it revokes
+          // every longer grant so a later narrowing cannot be overridden.
+          case 'sandbox/mode':
+          case 'sandbox/grant-revoke':
+            return state.grants.length === 0 ? state : { grants: [] }
+          default:
+            return state
+        }
+      },
+    })
 
     ctx.inject(['systemPrompt'], (scope: Context) => {
       scope.systemPrompt.context({
@@ -179,7 +250,7 @@ export class SandboxPolicyService extends Service {
           const session = context.agent?.session
           return session === undefined
             ? ''
-            : renderPolicyContext(this.resolve({ session }))
+            : renderPolicyContext(this.resolve({ session }), this.activeGrants(session))
         },
       })
     })
@@ -188,18 +259,30 @@ export class SandboxPolicyService extends Service {
   /**
    * Resolve the complete policy for one capability call. An approved explicit
    * mode outranks the session's last `sandbox/mode` event, which outranks the
-   * deployment default. A session cwd is its workspace-write boundary; the
-   * configured root is the fallback for agentless calls and sessions without a
-   * cwd.
+   * deployment default; an unexpired longer grant widens either of those. A
+   * session cwd is its workspace-write boundary; the configured root is the
+   * fallback for agentless calls and sessions without a cwd. Granted folders
+   * join the configured extra roots for `workspace-write`.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
+    const grants = session === undefined ? [] : this.activeGrants(session)
+    const standing = session === undefined
+      ? this.defaultMode
+      : this.overrideOf(session) ?? this.defaultMode
+    const grantedModes = grants.flatMap(grant => grant.mode === undefined ? [] : [grant.mode])
+    const mode = request.mode ?? (grantedModes.length === 0 ? standing : widestMode([standing, ...grantedModes]))
+    const roots = [
+      ...this.additionalWritableRoots ?? [],
+      ...grants.flatMap(grant => grant.root === undefined ? [] : [grant.root]),
+    ]
+    const additional = roots.length === 0 ? undefined : Object.freeze([...new Set(roots)])
     return {
-      mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
+      mode,
       workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
-      ...this.additionalWritableRoots === undefined ? {} : { additionalWritableRoots: this.additionalWritableRoots },
+      ...additional === undefined ? {} : { additionalWritableRoots: additional },
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }
@@ -211,6 +294,16 @@ export class SandboxPolicyService extends Service {
    */
   overrideOf(session: Session): SandboxMode | undefined {
     return this.sandboxModeProjectionHandle.stateOf(session) ?? undefined
+  }
+
+  /**
+   * The session's unexpired longer grants, in log order.
+   * @param session - session whose log supplies the grants.
+   * @returns the grants that still widen this session's policy.
+   */
+  private activeGrants(session: Session): readonly SandboxAccessGrant[] {
+    const now = Date.now()
+    return this.sandboxGrantsProjectionHandle.stateOf(session).grants.filter(grant => grant.expiresAt > now)
   }
 }
 

@@ -153,7 +153,7 @@ describe('/permission command', () => {
     const listed = await ctx.commands.execute(agent, '/permission', [], new AbortController().signal)
     expect(listed?.result).toEqual({
       kind: 'success',
-      text: 'current preset workspace-write (available: workspace-write, danger-full-access, auto)',
+      text: 'current preset workspace-write (available: workspace-write, danger-full-access, auto, revoke)',
     })
     const switched = await ctx.commands.execute(agent, '/permission auto', [], new AbortController().signal)
     expect(switched?.result).toEqual({ kind: 'success', text: 'preset auto' })
@@ -182,9 +182,18 @@ describe('/permission command', () => {
     const execution = await ctx.commands.execute(agent, '/permission', [], new AbortController().signal)
     expect(execution?.result).toEqual({
       kind: 'success',
-      text: 'current preset workspace-write (available: workspace-write, danger-full-access)',
+      text: 'current preset workspace-write (available: workspace-write, danger-full-access, revoke)',
     })
     expect(session.snapshotEvents().filter(event => event.type === 'permission/preset')).toHaveLength(1)
+  })
+
+  it('revokes temporary grants through /permission revoke', async () => {
+    const { ctx, session } = await harness()
+    const { agent } = await agentFor(ctx, session)
+    session.append('sandbox/grant', { scope: 'day', mode: 'danger-full-access', expiresAt: Date.now() + 60_000 })
+    const execution = await ctx.commands.execute(agent, '/permission revoke', [], new AbortController().signal)
+    expect(execution?.result).toEqual({ kind: 'success', text: 'Temporary access revoked.' })
+    expect(session.snapshotEvents().filter(event => event.type === 'sandbox/grant-revoke')).toHaveLength(1)
   })
 
   it('rejects an unknown preset without touching the log', async () => {
@@ -198,7 +207,7 @@ describe('/permission command', () => {
     // preset`, which the row's own title already says.
     expect(execution?.result).toEqual({
       kind: 'error',
-      text: 'unknown preset "yolo" (available: workspace-write, danger-full-access)',
+      text: 'unknown preset "yolo" (available: workspace-write, danger-full-access, revoke)',
     })
     expect(session.snapshotEvents().filter(event =>
       event.type !== 'command/run' && event.type !== 'command/done')).toEqual(before)

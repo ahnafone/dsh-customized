@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { ESCALATION_TARGETS, approveEscalation, sandboxPermissionsDescription, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { grantSandboxAccess } from '@deepseek-ai/dsh-sandbox-policy'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution, ShellRunResult } from '@deepseek-ai/dsh-shell'
@@ -225,7 +226,7 @@ export function apply(ctx: Context, config: Config = {}): void {
    * ingredients. The shared policy resolver is required whenever the executor
    * advertises confinement, so a split composition fails at tool-plugin load.
    */
-  const approveBashEscalation = (
+  const approveBashEscalation = async (
     mode: string,
     justification: string,
     exec: ToolExecution,
@@ -235,7 +236,8 @@ export function apply(ctx: Context, config: Config = {}): void {
       throw new Error('sandbox_permissions is not available in this composition (no sandboxing executor to escalate)')
     }
     const effectiveMode = (standingPolicy as SandboxExecutionPolicy).mode
-    return approveEscalation(
+    const session = exec.agent?.session
+    const decision = await approveEscalation(
       { requestedMode: mode, justification, effectiveMode, subject: 'command' },
       {
         approver: ctx.get('approval'),
@@ -243,8 +245,10 @@ export function apply(ctx: Context, config: Config = {}): void {
         callId: exec.callId,
         toolName: 'bash',
         signal: exec.signal,
+        ...session === undefined ? {} : { grant: (grant) => { grantSandboxAccess(session, grant) } },
       },
     )
+    return decision.mode
   }
 
   // Cross-call guidance belongs in the prompt rather than one-call schema prose.

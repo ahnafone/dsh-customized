@@ -17,7 +17,7 @@
  */
 
 import { assertNever } from '@deepseek-ai/dsh-util-values'
-import { escalationDisplayReason } from './locales.ts'
+import { escalationDisplayReason, folderEscalationDisplayReason } from './locales.ts'
 import type { SandboxMode } from './index.ts'
 
 /**
@@ -102,7 +102,42 @@ export function sandboxPermissionsDescription(subject: string): string {
  * to the approval seam's `ApprovalOutcome` so an `ApprovalService.request`
  * return is assignable without this package importing it.
  */
-export type EscalationOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+export type EscalationOutcome = 'allowed-once' | 'allowed-day' | 'rejected' | 'cancelled' | 'unavailable'
+
+/**
+ * The longer scopes an escalation ask can offer. `day` lapses 24 hours after
+ * the decision; a caller that cannot persist a grant offers one-shot only.
+ */
+export type EscalationGrantScope = 'day'
+
+/**
+ * The longer grant a user chose for a denied operation.
+ *
+ * Exactly one of {@link mode} or {@link root} is present: a mode grant widens
+ * every call in the session; a folder grant adds one writable directory under
+ * the standing `workspace-write` mode.
+ */
+export interface EscalationGrant {
+  /** The scope the user chose. */
+  readonly scope: EscalationGrantScope
+  /** The sandbox mode granted for the day; absent for a folder grant. */
+  readonly mode?: SandboxMode
+  /** The physical absolute directory granted for the day; absent for a mode grant. */
+  readonly root?: string
+}
+
+/**
+ * The resolution of one escalation ask: the mode the current call runs under,
+ * the folder it may additionally write under, and the longer grant to persist.
+ */
+export interface EscalationDecision {
+  /** The mode the current call runs under. */
+  readonly mode: SandboxMode
+  /** The directory this call may additionally write under, for a folder ask. */
+  readonly root?: string
+  /** The longer grant the user chose, when they chose one. */
+  readonly grant?: EscalationGrant
+}
 
 /**
  * The minimal approval-request shape {@link approveEscalation} needs —
@@ -123,6 +158,7 @@ export interface EscalationApprover<A = object, C = string> {
     callId: C
     reason: string
     displayReason?: { readonly en: string; readonly [locale: string]: string }
+    grants?: readonly EscalationGrantScope[]
     signal?: AbortSignal
   }): Promise<EscalationOutcome>
 }
@@ -145,6 +181,11 @@ export interface EscalationApproval<A = object, C = string> {
   toolName: string
   /** The tool-execution abort signal the approval request rides, when present. */
   signal?: AbortSignal
+  /**
+   * Persist the longer grant the user chooses. Absent means the ask offers
+   * one-shot only, because this composition cannot store the grant.
+   */
+  grant?: (grant: EscalationGrant) => void
 }
 
 /** One escalation request, as {@link approveEscalation} judges it. */
@@ -157,21 +198,29 @@ export interface EscalationRequest {
   effectiveMode: SandboxMode
   /** The family's noun for the escalated action in user-facing texts (`command` for bash, `operation` for fs). */
   subject: string
+  /**
+   * The physical absolute directory a folder grant would cover, when the
+   * denied operation identifies one. Present only under `workspace-write`;
+   * absent asks for the requested mode instead.
+   */
+  grantRoot?: { readonly path: string; readonly display: string }
 }
 
 /**
  * Resolve a sandbox permission request before execution. Repeating the call's
  * effective mode returns it without approval. A strictly wider mode requires
- * approval and applies only to this call. Narrower or unsupported targets,
- * missing approval services or agents for widening, and non-grant outcomes
- * throw before execution.
+ * approval; a folder ask resolves to the standing mode plus the folder for
+ * this call, and a mode ask applies the requested mode to this call only. A
+ * chosen day grant is handed to the caller's persistence sink. Narrower or
+ * unsupported targets, missing approval services or agents for widening, and
+ * non-grant outcomes throw before execution.
  * @param request - the escalation to judge (see {@link EscalationRequest}).
  * @param approval - the approval ingredients the tool holds (see {@link EscalationApproval}).
- * @returns the granted mode, consumed by the one call that asked.
+ * @returns the decision for this call, including the longer grant to persist.
  */
-export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
-  const { requestedMode: mode, effectiveMode, justification, subject } = request
-  if (mode === effectiveMode) return effectiveMode
+export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<EscalationDecision> {
+  const { requestedMode: mode, effectiveMode, justification, subject, grantRoot } = request
+  if (mode === effectiveMode) return { mode: effectiveMode }
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target
   // vocabulary; the effective mode is per-call truth).
@@ -185,21 +234,48 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
     throw new Error(`sandbox escalation to "${mode}" requires approval, but the call has no agent to route it through`)
   }
   // Self-contained for the audit trail: approval/asked stores this reason,
-  // and the target mode is part of the grant's identity.
+  // and the target mode (or the folder the user is asked about) is part of the
+  // grant's identity. Only a caller that can persist a grant offers one.
+  const grants: readonly EscalationGrantScope[] | undefined = approval.grant === undefined ? undefined : ['day']
   const outcome = await approval.approver.request({
     agent: approval.agent,
     toolName: approval.toolName,
     callId: approval.callId,
-    reason: `escalate sandbox to ${mode}: ${justification}`,
-    displayReason: escalationDisplayReason(mode, justification),
+    reason: grantRoot === undefined
+      ? `escalate sandbox to ${mode}: ${justification}`
+      : `escalate sandbox for ${grantRoot.display} (requested ${mode}): ${justification}`,
+    displayReason: grantRoot === undefined
+      ? escalationDisplayReason(mode, justification)
+      : folderEscalationDisplayReason(grantRoot.display, justification),
+    ...grants === undefined ? {} : { grants },
     ...approval.signal ? { signal: approval.signal } : {},
   })
+  // A folder ask never needs the wider mode: the standing workspace-write mode
+  // plus the granted folder covers the denied operation, and the user approved
+  // exactly that folder rather than the requested mode.
+  const once: EscalationDecision = grantRoot === undefined
+    ? { mode: mode as SandboxMode }
+    : { mode: effectiveMode, root: grantRoot.path }
   switch (outcome) {
     // The schema enum already pinned `mode` to the closed target vocabulary;
     // the check above proved it is strictly wider.
-    case 'allowed-once': return mode as SandboxMode
-    case 'rejected': throw new Error(`the user rejected escalating this ${subject} to "${mode}"; it stays denied, so stop and explain instead of working around it`)
-    case 'cancelled': throw new Error(`approval for escalating to "${mode}" was cancelled`)
+    case 'allowed-once': return once
+    case 'allowed-day': {
+      if (approval.grant === undefined) {
+        throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval channel can persist a longer grant`)
+      }
+      const grant: EscalationGrant = grantRoot === undefined
+        ? { scope: 'day', mode: mode as SandboxMode }
+        : { scope: 'day', root: grantRoot.path }
+      approval.grant(grant)
+      return { ...once, grant }
+    }
+    case 'rejected': throw new Error(grantRoot === undefined
+      ? `the user rejected escalating this ${subject} to "${mode}"; it stays denied, so stop and explain instead of working around it`
+      : `the user rejected allowing this ${subject} under "${grantRoot.display}"; it stays denied, so stop and explain instead of working around it`)
+    case 'cancelled': throw new Error(grantRoot === undefined
+      ? `approval for escalating to "${mode}" was cancelled`
+      : `approval for allowing "${grantRoot.display}" was cancelled`)
     case 'unavailable': throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval channel is available`)
     default: return assertNever(outcome, 'EscalationOutcome')
   }

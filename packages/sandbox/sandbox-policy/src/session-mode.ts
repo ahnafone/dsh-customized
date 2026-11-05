@@ -21,6 +21,29 @@
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
+/**
+ * One user-approved longer grant for a session: either a widened mode or an
+ * extra writable directory, lapses at {@link expiresAt}, and never narrows a
+ * mode. The event is log-only and replayable; a mode switch clears every active
+ * grant, and `/permission revoke` clears them directly.
+ */
+export interface SandboxAccessGrant {
+  /** The scope the user chose; `day` is 24 hours from the decision. */
+  readonly scope: 'day'
+  /** Unix epoch milliseconds after which the grant no longer applies. */
+  readonly expiresAt: number
+  /** The sandbox mode granted for the day; absent for a folder grant. */
+  readonly mode?: SandboxMode | undefined
+  /** The physical absolute directory granted for the day; absent for a mode grant. */
+  readonly root?: string | undefined
+}
+
+/** The caller-supplied grant before the policy stamps its expiry. */
+export type SandboxAccessGrantInput = Omit<SandboxAccessGrant, 'expiresAt'>
+
+/** The fixed duration of one `day` grant (24 hours). */
+export const DAY_GRANT_MS = 86_400_000
+
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /**
@@ -35,6 +58,18 @@ declare module '@deepseek-ai/dsh-session/types' {
       /** Marks an override seeded into a child at delegation. */
       source?: 'delegation'
     }
+    /**
+     * A user-approved longer grant recorded after an approval decision —
+     * log-only and replayable. The `sandboxGrants` projection folds it; an
+     * expired grant no longer widens the resolved policy, and any later
+     * `sandbox/mode` event clears the active set.
+     */
+    'sandbox/grant': SandboxAccessGrant
+    /**
+     * Clear every active longer grant without changing the session's standing
+     * mode — the `/permission revoke` write path.
+     */
+    'sandbox/grant-revoke': Record<string, never>
   }
 }
 
@@ -52,4 +87,24 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ['read-only', 'workspace-wr
  */
 export function setSandboxMode(session: Session, mode: SandboxMode): void {
   session.append('sandbox/mode', { mode })
+}
+
+/**
+ * THE write path for a user-approved longer grant: appends exactly one
+ * `sandbox/grant` event with the policy's fixed day expiry. The grant widens
+ * only, never narrows; a later `sandbox/mode` event clears the active set.
+ * @param session - the session the grant belongs to.
+ * @param grant - the mode or folder the user approved, without an expiry.
+ */
+export function grantSandboxAccess(session: Session, grant: SandboxAccessGrantInput): void {
+  session.append('sandbox/grant', { ...grant, expiresAt: Date.now() + DAY_GRANT_MS })
+}
+
+/**
+ * Clear every active longer grant without touching the session's standing
+ * mode — the `/permission revoke` write path.
+ * @param session - the session whose grants are revoked.
+ */
+export function revokeSandboxGrants(session: Session): void {
+  session.append('sandbox/grant-revoke', {})
 }

@@ -5,6 +5,7 @@ import type {} from './index.ts'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import { approveEscalation } from '@deepseek-ai/dsh-sandbox'
+import { grantSandboxAccess } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ChangeResult, ManagementError, PluginEntryId, PluginInstallFailureKind, RestartReason } from './types.ts'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { getDshRuntimeVersion } from '@deepseek-ai/dsh-app-boot'
@@ -103,11 +104,13 @@ export function apply(ctx: Context): void {
     },
     async execute(args, exec) {
       const policy = ctx.sandboxPolicy.resolve(exec.agent === undefined ? {} : { session: exec.agent.session })
+      const session = exec.agent?.session
       await approveEscalation({
         requestedMode: 'danger-full-access', effectiveMode: policy.mode, subject: 'plugin management operation',
         justification: `plugin_manager ${JSON.stringify(args)}. Profile changes persist across sessions; installed Host code runs outside the workspace sandbox.`,
       }, { approver: ctx.get('approval'), agent: exec.agent, callId: exec.callId,
-        toolName: 'plugin_manager', signal: exec.signal })
+        toolName: 'plugin_manager', signal: exec.signal,
+        ...session === undefined ? {} : { grant: (grant) => { grantSandboxAccess(session, grant) } } })
       exec.signal.throwIfAborted()
       const manager = ctx.pluginManager
       switch (args.action) {
