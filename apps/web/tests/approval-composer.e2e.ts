@@ -149,7 +149,7 @@ describe.each(MODE === 'record' ? ['button'] as const : ['button', 'keyboard'] a
             viewport: window.innerHeight,
           }
         })
-        expect(geometry.buttons).toBe(2)
+        expect(geometry.buttons).toBe(3)
         expect(geometry.scrolls).toBe(true)
         // The panel and composer share one cap; allow sub-pixel layout variance.
         expect(Math.abs(geometry.capped - composerCap)).toBeLessThan(1)
@@ -190,4 +190,59 @@ describe.each(MODE === 'record' ? ['button'] as const : ['button', 'keyboard'] a
   it.skipIf(MODE === 'record')('keeps the fixture inventory closed', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, ['session.v3.jsonl', 'ui.expected.md', 'workspace.expected'])
   })
+})
+
+describe('web e2e: approval day grant', () => {
+  let scaffold: WebScaffold
+  let browser: Browser
+  let page: Page
+  let tripwire: ReturnType<typeof watchConsole>
+  const sessionEvents: SessionEvent[] = []
+
+  beforeAll(async () => {
+    scaffold = await launchWebScaffold({ replayFixture: FIXTURE, paceMs: 15, compareReplaySession: false })
+    scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
+    browser = await chromium.launch()
+    page = await newEnglishPage(browser)
+    tripwire = watchConsole(page)
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
+    await connectFreshWorkspace(page, scaffold.workspaceCwd)
+  }, 120_000)
+
+  afterAll(async () => {
+    await browser?.close()
+    await scaffold?.close()
+  })
+
+  it('records a day grant and runs the escalated command', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-approval-day-grant'))
+    const input = page.locator('[data-composer-input]').first()
+    await input.waitFor({ timeout: 10_000 })
+    await page.locator('[aria-label^="Access mode"]').click()
+    await page.getByRole('menuitem', { name: 'Read Only' }).click()
+    await expect.poll(
+      () => page.locator('[aria-label="Access mode, current: Read Only"]').count(),
+      { timeout: 15_000 },
+    ).toBe(1)
+
+    const settled = scaffold.whenTurnSettled(60_000)
+    await input.fill(PROMPT)
+    await input.press('Enter')
+
+    const panel = page.locator('[data-approval-key]')
+    await panel.waitFor({ timeout: 60_000 })
+    await panel.getByRole('button', { name: 'Allow for 1 day' }).click()
+    await settled
+
+    expect(sessionEvents.find(event => event.type === 'approval/decided' && event.data.outcome === 'allowed-day')).toBeTruthy()
+    const grant = sessionEvents.find(event => event.type === 'sandbox/grant')
+    expect(grant).toBeDefined()
+    expect({ ...grant?.data }).toMatchObject({ scope: 'day', mode: 'workspace-write' })
+    const written = await readFile(join(scaffold.workspaceCwd, 'workspace', 'notes.txt'), 'utf8')
+    expect(written).toContain(TOKENS.slice(0, 64))
+    expect(await page.locator('[data-approval-key]').count()).toBe(0)
+    expect(tripwire.pageErrors).toEqual([])
+    expect(tripwire.warnings).toEqual([])
+  }, 300_000)
 })

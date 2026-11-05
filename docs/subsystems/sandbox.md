@@ -100,6 +100,12 @@ interface SandboxPolicy extends SandboxExecutionPolicy {
 }
 ```
 
+## Temporary session grants
+
+A sandbox escalation may offer the user a longer grant. The chosen grant is recorded as one log-only `sandbox/grant` event on the asking session, folded by the `sandboxGrants` projection; it is not deployment configuration. A **mode grant** widens the session to the requested mode for 24 hours; a **folder grant** adds one physical directory to the policy's `additionalWritableRoots` under `workspace-write`, so both filesystem mutations and shell commands under that directory are covered. A folder ask is offered only under `workspace-write`; under `read-only` the requested mode is offered instead.
+
+`ctx.sandboxPolicy.resolve()` merges every unexpired grant into the per-call policy: the widest granted mode wins over the standing mode, and granted folders join the configured extra roots. Expiry is evaluated on read, never written from a read path. Any later `sandbox/mode` event (a permission-preset switch or mode change) clears the active grants, and `/permission revoke` clears them without changing the standing mode. Grants are per-session, replay with the log, and are not inherited by subagent sessions.
+
 <a id="wrapped-argv-and-classification-dialects"></a>
 
 ## Wrapped argv and classification dialects
@@ -206,9 +212,10 @@ The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mo
 /**
  * Resolve the complete policy for one capability call. An approved explicit
  * mode outranks the session's last `sandbox/mode` event, which outranks the
- * deployment default. A session cwd is its workspace-write boundary; the
- * configured root is the fallback for agentless calls and sessions without a
- * cwd.
+ * deployment default; an unexpired longer grant widens either of those. A
+ * session cwd is its workspace-write boundary; the configured root is the
+ * fallback for agentless calls and sessions without a cwd. Granted folders
+ * join the configured extra roots for `workspace-write`.
  * @param request - optional session and approved mode override.
  * @returns the fully resolved per-call mode and absolute workspace root.
  */

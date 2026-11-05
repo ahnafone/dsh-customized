@@ -1,0 +1,35 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {"key":"event:approval/decided","kind":"event","event":"approval/decided","surface":false,"digest":"79850842541a526c88b38bd397bf999125e2b8fbf337f1f83f2cca8983a7381e"},
+    {"key":"event:sandbox/grant","kind":"event","event":"sandbox/grant","surface":false,"digest":"31220a4ed485774927435a044b57c3c504c158e0c3e5a5666034e4cb6c4b5921"},
+    {"key":"event:sandbox/grant-revoke","kind":"event","event":"sandbox/grant-revoke","surface":false,"digest":"fa78d5c355ea3c9e95d1c2ac5170d7940d959e5dc71bb6d9a7158c28fbdfada0"}
+  ],
+  "types": [],
+  "nodes": {
+    "0657d3ca5ac4e7bf": {"kind":"primitive","type":"number"},
+    "12a0cfa619ac4a5f": {"kind":"literal","value":"read-only"},
+    "18fce9540bb20897": {"kind":"literal","value":"danger-full-access"},
+    "2142e391b9ccb60d": {"kind":"literal","value":"cancelled"},
+    "2c4c21f19f426a58": {"kind":"literal","value":"unavailable"},
+    "2ddb1f08b0388fdb": {"kind":"union","types":["2142e391b9ccb60d","2c4c21f19f426a58","811229eedcec5797","a3670a0686cf59f5","fab35c4520883c0d"]},
+    "31220a4ed4857749": {"kind":"object","properties":[{"name":"data","type":"b0ad4218bf188fa6","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"3541737991ca6564","optional":false}],"indices":[]},
+    "3541737991ca6564": {"kind":"literal","value":"sandbox/grant"},
+    "378f90f9f6022a09": {"kind":"literal","value":"approval/decided"},
+    "4cd48f3e5108bd6e": {"kind":"primitive","type":"string"},
+    "79850842541a526c": {"kind":"object","properties":[{"name":"data","type":"86cfe398f0abf951","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"378f90f9f6022a09","optional":false}],"indices":[]},
+    "8071ee98725e3faf": {"kind":"literal","value":"day"},
+    "811229eedcec5797": {"kind":"literal","value":"allowed-once"},
+    "86cfe398f0abf951": {"kind":"object","properties":[{"name":"id","type":"4cd48f3e5108bd6e","optional":false},{"name":"outcome","type":"2ddb1f08b0388fdb","optional":false}],"indices":[]},
+    "a3670a0686cf59f5": {"kind":"literal","value":"allowed-day"},
+    "a3edd1efd1fef21b": {"kind":"literal","value":"workspace-write"},
+    "b0ad4218bf188fa6": {"kind":"object","properties":[{"name":"expiresAt","type":"0657d3ca5ac4e7bf","optional":false},{"name":"mode","type":"fab2bb09bc5e3b9d","optional":true},{"name":"root","type":"4cd48f3e5108bd6e","optional":true},{"name":"scope","type":"8071ee98725e3faf","optional":false}],"indices":[]},
+    "d4fc22862c213038": {"kind":"literal","value":"sandbox/grant-revoke"},
+    "dacf3d5f3e4ff619": {"kind":"literal","value":true},
+    "f0d4d35a2f77027c": {"kind":"object","properties":[],"indices":[{"key":"4cd48f3e5108bd6e","value":"fcf427290c6213c2"}]},
+    "fa78d5c355ea3c9e": {"kind":"object","properties":[{"name":"data","type":"f0d4d35a2f77027c","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"d4fc22862c213038","optional":false}],"indices":[]},
+    "fab2bb09bc5e3b9d": {"kind":"union","types":["12a0cfa619ac4a5f","18fce9540bb20897","a3edd1efd1fef21b"]},
+    "fab35c4520883c0d": {"kind":"literal","value":"rejected"},
+    "fcf427290c6213c2": {"kind":"primitive","type":"never"}
+  }
+}

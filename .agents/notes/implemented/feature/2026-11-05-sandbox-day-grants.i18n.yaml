@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-11-05-sandbox-day-grants.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-05-sandbox-day-grants.md
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work:
+  en: 8051a28e98d33388
+  zh: 3ffdf76ef0a74725
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/problem:
+  en: 8334e100bfde07ac
+  zh: 20c17e38d550019c
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/decision:
+  en: df0926fd04054f08
+  zh: 27e434781e6b3246
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/decision/the-approval-decision:
+  en: a7c65f8dbea56adc
+  zh: b77704b9a180f56c
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/decision/the-grant-and-its-scope:
+  en: fb894d77735aa353
+  zh: 202dcb05193f8da1
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/decision/revocation:
+  en: cc14f5af7862b850
+  zh: f9e95cbeeaadb14e
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/decision/channels-and-scope-limits:
+  en: f2202d7ba973c061
+  zh: 5be56327dfcfcb43
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/alternatives-considered:
+  en: 3b38a75ddeb0b4eb
+  zh: 4570e3cc94f51e21
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/consequences:
+  en: d8bc39ee1a0ecd35
+  zh: ddcd677a584b1c57
+/agent-note-day-scoped-sandbox-grants-for-folder-crossing-work/testing:
+  en: 659e4dd59390bd5f
+  zh: 0cb80a193d5497b9

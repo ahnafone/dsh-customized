@@ -100,6 +100,12 @@ interface SandboxPolicy extends SandboxExecutionPolicy {
 }
 ```
 
+## 临时会话授权
+
+沙箱越权升级可以向用户提供更长期的授权。被选中的授权会以一条仅记录日志的 `sandbox/grant` 事件写入发起请求的会话，并由 `sandboxGrants` 投影折叠；它不是部署配置。**模式授权**会在 24 小时内把会话放宽到所请求的模式；**目录授权**会在 `workspace-write` 下把一个物理目录加入策略的 `additionalWritableRoots`，因此该目录下的文件修改和 shell 命令都会被覆盖。目录授权只在 `workspace-write` 下提供；在 `read-only` 下改为提供所请求的模式。
+
+`ctx.sandboxPolicy.resolve()` 会把每条未过期的授权合并进每次调用的策略：更宽的模式授权会胜过常驻模式，目录授权会加入已配置的额外根目录。过期在读取时判断，绝不在读取路径上写入。之后任何 `sandbox/mode` 事件（权限预设切换或模式变更）都会清空活动授权，`/permission revoke` 可在不改变常驻模式的情况下清空它们。授权按会话生效，随日志回放，并且不会被子 agent 会话继承。
+
 <a id="wrapped-argv-and-classification-dialects"></a>
 
 ## 包装后的 argv 与分类方言
@@ -206,9 +212,10 @@ The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mo
 /**
  * Resolve the complete policy for one capability call. An approved explicit
  * mode outranks the session's last `sandbox/mode` event, which outranks the
- * deployment default. A session cwd is its workspace-write boundary; the
- * configured root is the fallback for agentless calls and sessions without a
- * cwd.
+ * deployment default; an unexpired longer grant widens either of those. A
+ * session cwd is its workspace-write boundary; the configured root is the
+ * fallback for agentless calls and sessions without a cwd. Granted folders
+ * join the configured extra roots for `workspace-write`.
  * @param request - optional session and approved mode override.
  * @returns the fully resolved per-call mode and absolute workspace root.
  */

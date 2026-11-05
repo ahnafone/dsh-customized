@@ -40,7 +40,7 @@ flowchart TD
   around --> toolBody
   pre -->|deny| denied
   pre -->|ask| approval
-  approval -->|allowed-once| guards
+  approval -->|granted: once or scoped| guards
   approval -->|rejected, cancelled, unavailable| denied
   approval -.->|throw| normalized
   denied --> project

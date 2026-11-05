@@ -27,7 +27,7 @@ One `cordis.yml` entry mounts the seam. Not loading it is the fail-closed opt-ou
 
 The entry alone provides mechanism, not a channel: with no answerer composed, every ask resolves `unavailable` and the asking tool call denies — fail-closed needs no configuration. Composing the [ACP profile app](../../../../packages/bundle/acp-app/README.md) completes the loop: its [automation-only bridge](../simplification/2026-07-23-acp-automation-only-protocol.md) registers an answerer that sends `session/request_permission` to the owning client with the exact tool-call id and one-shot allow/reject options. `policy: never` is the unattended stance — every ask auto-rejects deterministically, and the current value joins the runtime-context snapshot. `policy` is validated against the closed list at plugin load; anything else throws.
 
-What a composed deployment observes: `allowed-once` lets exactly that call proceed; rejection, dismissal, and channel absence deny with three distinct reasons the model can tell apart; a successful in-turn request lands a durable `approval/asked`/`approval/decided` pair on the asking agent's session log; nothing about a grant persists past the call that asked. An idle request or audit append failure rejects instead of returning an unaudited decision.
+What a composed deployment observes: `allowed-once` lets exactly that call proceed; rejection, dismissal, and channel absence deny with three distinct reasons the model can tell apart; a successful in-turn request lands a durable `approval/asked`/`approval/decided` pair on the asking agent's session log; nothing about the one-shot grant persists past the call that asked. Since the [day-scoped grant decision](2026-11-05-sandbox-day-grants.md), a sandbox escalation may advertise the `day` scope; when the user picks it, the asking consumer persists a session grant until it expires or is revoked. An idle request or audit append failure rejects instead of returning an unaudited decision.
 
 One ask under this composition, from the sandbox example's recorded `escalation-approved` scenario — the model requests a sandbox escalation, the gate asks, and the automation client selects Allow once:
 
@@ -51,7 +51,7 @@ The `escalation-rejected` twin ends in `{"outcome": "rejected"}` instead: nothin
 
 #### The seam: mechanism and policy split
 
-After validation and a successful `approval/asked` append, the service resolves the `approval/request` waterfall to `allowed-once`, `rejected`, `cancelled`, or `unavailable`. It borrows the readonly request identity and signal, treats abort as `cancelled`, contains answerer failures and invalid returns as `unavailable`, discards late answers, and appends the paired `approval/decided` event. Pre-commit audit failures reject; post-append observer failures cannot undo an authoritative event. `allowed-once` authorizes only the asked action, and `request()` rejects outside an open turn so the audit pair remains inside the durable commit boundary.
+After validation and a successful `approval/asked` append, the service resolves the `approval/request` waterfall to `allowed-once`, a scoped grant such as `allowed-day` that the ask advertised, `rejected`, `cancelled`, or `unavailable`. It borrows the readonly request identity and signal, treats abort as `cancelled`, contains answerer failures and invalid returns as `unavailable`, discards late answers, and appends the paired `approval/decided` event. Pre-commit audit failures reject; post-append observer failures cannot undo an authoritative event. `allowed-once` authorizes only the asked action, and `request()` rejects outside an open turn so the audit pair remains inside the durable commit boundary.
 
 Answerers are `approval/request` waterfall listeners. Zero listeners fall through to `unavailable`; a recognizing listener occupies the first-wins decision slot, while an unrecognized agent must delegate with `next()`. Listeners dispose with their fibers, so an unloaded channel fails closed. Because sibling registration order is not deterministic, a deployment composes one terminal answerer and reserves `prepend` for decide-or-delegate gates.
 
@@ -87,7 +87,7 @@ Snapshots record allowed and rejected sandbox escalation through `session/reques
 
 ## Deferred
 
-- **`allow_always` grant storage** — honoring a persistent grant means designing storage, scope identity (call? path? prefix? session? time window?), and revocation; until designed, only the one-shot options are advertised.
+- **Profile-wide `allow_always` grant storage** — still deferred: honoring a persistent grant means designing profile storage, scope identity, and a revocation surface. The session-scoped day grant shipped in the [day-scoped grant decision](2026-11-05-sandbox-day-grants.md); only one-shot remains the default advertisement.
 - **A recorded hook-driven `ask` through a composed answerer** — the permission wire is recorded through the sandbox example's escalation branches. The hook matrix's `hook-cc-pretool-ask` pins the no-ApprovalService fallback denial, while the hook-producer-plus-answerer composition remains on the unit tier.
 - **Routing a child agent's approvals to the parent session** — `subagent-acp`'s child auto-answers its own permission requests; delegating them to the parent controller is its own design.
 
@@ -104,7 +104,7 @@ Snapshots record allowed and rejected sandbox escalation through `session/reques
 
 The implemented contract is pinned by the suites in Testing:
 
-- `allowed-once` dispatches one action; every other outcome denies with a distinct reason, and `'never'` rejects before prompting.
+- `allowed-once` dispatches one action; a scoped grant the ask advertised dispatches under that scope; every non-grant outcome denies with a distinct reason, and `'never'` rejects before prompting.
 - Missing, foreign, agent-less, throwing, invalid, and disconnected answer paths fail closed.
 - Successful requests route by exact agent ownership and append one replayable, model-invisible audit pair; idle and pre-commit failures reject.
 - ACP ownership keeps decisions inside their session, while a deployment without the service emits no request or audit events.
@@ -118,7 +118,7 @@ Costs and accepted limits:
 ## FAQ
 
 - **What happens in a deployment with no answerer at all (headless, CI)?** Every ask falls through the empty waterfall to `unavailable` and the tool call denies with the "no approval channel is available" reason. Fail-closed is the zero-listener default, not a configuration.
-- **Can a grant persist — "always allow this"?** No. `allowed-once` authorizes the single asked-about action and the service stores nothing between requests; `allow_always` is deliberately not advertised until grant storage is designed (§ Deferred).
+- **Can a grant persist — "always allow this"?** A one-shot `allowed-once` still authorizes only the single asked-about action and the service stores nothing between requests. An asker may advertise the `day` scope; when the user picks it, the asking consumer records a session grant that lapses after 24 hours or on a mode switch / `/permission revoke` (see the [day-scoped grant decision](2026-11-05-sandbox-day-grants.md)). There is no profile-wide `allow_always` store (§ Deferred).
 - **What does the model see of an approval?** Only the tool result the asker derives from the outcome — the audit pair never enters the transcript. The three non-grant reasons are distinct, so the model can tell a human "no" from a dismissed prompt from a missing channel.
 - **Who decides whether a call asks in the first place?** Policy producers: a hook returning `permissionDecision: ask`, any `tools/pre-execute` listener, or the sandbox escalation gate. The seam and the bridge only route and answer; neither injects its own judgment about what deserves a prompt.
 - **What happens when the user dismisses the prompt, or the turn aborts mid-ask?** Dismissal maps to `cancelled` with its own deny text. An already-aborted signal settles `cancelled` without dispatching; an abort during the ask discards the late answer. When both audit appends commit, either path records one pair, never two.
